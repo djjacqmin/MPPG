@@ -1,39 +1,41 @@
 function MPPG_Check
 %MPPG_Check.m
-%This script compares measured and calculated MPPG data for all tests and energies.
+%This script compares measured and calculated MPPG data for all tests.
+%The tests need to be summarized in an XL spreadsheet according to the format outlined below
 clear all;
 close all;
 
+%path and file name to spread sheet that describe each test
 meas_f_path = 'E:\\Google Drive\\Medical_Physics\\MPPG\\MPPG_BasicPhotonFields-2014-01-17\\';
 meas_f_file = '20131223_MPPG_Meas_Data.xlsx';
 meas_f_full = [meas_f_path meas_f_file];
-[~,~,measTable] = xlsread(meas_f_full, 5);
+[~,~,measTable] = xlsread(meas_f_full, 5); %5 indicates which page of the XL workbook the summary data is in
 
 mD = measTable(2:end,:); %remove header row
 [numTests numCols] = size(mD);
 
-plotOn = 1;
+%plot flag, tells subroutines to plot or not
+plotOn = 0;
 
-%Which columns hold what data in table, this makes it a little easier to change which columns are which
-mPathID = 10;
-mFnameID = 11;
-mPageID = 4;
-mDepRID = 5;
-mIndepRID = 6;
-depthID = 7;
-testID = 1;
-enID = 2;
-subTestID = 3;
-cPathID = 8;
-cFnameID = 9;
-cOrigXID = 12;
-cOrigYID = 13;
-cOrigZID = 14;
-cOrigResID = 15;
+%Which columns hold what data in summary table
+testID = 1;     %name of the test (string)
+enID = 2;       %energy (integer)
+subTestID = 3;  %PDD or Cross beam (string)
+mPageID = 4;    %Measured data XL workbook page
+mDepRID = 5;    %Measured data dependent variable (nC)
+mIndepRID = 6;  %Measured data independent variable (position)
+depthID = 7;    %Depth (for cross beam measurements)
+cPathID = 8;    %Path to calculated dicom file (Pinnacle output)
+cFnameID = 9;   %Name of calculated dicom file (Pinnacle output)
+mPathID = 10;   %Path to measured data XL file
+mFnameID = 11;  %Name of measured data XL file
+cOrigXID = 12;  %Calculated dose grid origin offset (Lat)
+cOrigYID = 13;  %Calculated dose grid origin offset (Sup-Inf)
+cOrigZID = 14;  %Calculated dose grid origin offset (Axial)
+cOrigResID = 15;%Dose grid resolution
 
 %Loop through all verification tests
-%for v = 1:numTests
-for v = 4:4
+for v = 1:numTests
     if strcmp('PDD',mD(v,3))
         %Run PDD verification
         measPDD = GetMeasPDD(mD{v,mPathID}, mD{v,mFnameID}, mD{v,mPageID},...
@@ -66,7 +68,7 @@ for v = 4:4
         ylim([0 1]);
         xlabel('Depth (cm)');
         ylabel('Gamma');
-        title(['Gamma ' num2str(mD{v,enID}) ' MV']);
+        title(['PDD Gamma ' num2str(mD{v,enID}) ' MV']);
         %WriteSummary(vOut);
     elseif strcmp('Cross',mD(v,3))
         %Run cross beam verification
@@ -85,14 +87,27 @@ for v = 4:4
         plot(regMeas(:,1), regMeas(:,2)); hold all;
         plot(regCalc(:,1), regCalc(:,2));
         ylim([0 1.25]);
-        xlabel('Depth (cm)');
+        xlabel('Position (cm)');
         ylabel('Normalized dose');
         legend('Measured', 'Calculated');
-        title(['PDD ' num2str(mD{v,enID}) ' MV']);        
+        title(['Cross ' num2str(mD{v,enID}) ' MV @ ' num2str(mD{v,depthID}) ' cm']);   
+        
+        %perform gamma evaluation
+        vOut = VerifyPDD(regMeas, regCalc);
+        
+        %display gamma
+        figure;
+        plot(regMeas(:,1),vOut);
+        ylim([0 2]);
+        xlabel('Position (cm)');
+        ylabel('Gamma');
+        title(['Cross Gamma ' num2str(mD{v,enID}) ' MV @ ' num2str(mD{v,depthID}) ' cm']);        
     end
         
 end
 
+%==============================================
+%==============================================
 function measPDD = GetMeasPDD(path, fname, page, depR, indepR, plotOn, test, en, sub)
     dep = xlsread([path fname], page, depR); %dependent var
     indep = xlsread([path fname], page, indepR);
@@ -106,6 +121,8 @@ function measPDD = GetMeasPDD(path, fname, page, depR, indepR, plotOn, test, en,
     end
 end
 
+%==============================================
+%==============================================
 function measCross = GetMeasCross(path, fname, page, depR, indepR, plotOn, test, en, sub, depth)
     dep = xlsread([path fname], page, depR); %dependent var
     indep = xlsread([path fname], page, indepR);
@@ -119,6 +136,8 @@ function measCross = GetMeasCross(path, fname, page, depR, indepR, plotOn, test,
     end
 end
 
+%==============================================
+%==============================================
 function calcPDD = GetCalcPDD(path, fname, origX, origY, origZ, res, plotOn, test, en, sub)
     
     info = dicominfo([path fname]);    
@@ -151,6 +170,8 @@ function calcPDD = GetCalcPDD(path, fname, origX, origY, origZ, res, plotOn, tes
     calcPDD = [PddIndep' OnAxPdd]; %return the calculated PDD data
 end
 
+%==============================================
+%==============================================
 function calcCross = GetCalcCross(path, fname, origX, origY, origZ, res, plotOn, test, en, sub, depth)
     
     info = dicominfo([path fname]);    
@@ -163,7 +184,7 @@ function calcCross = GetCalcCross(path, fname, origX, origY, origZ, res, plotOn,
     %Get interogation point in image frame
     %The image frame has 0,0,0 at most right, post, sup
     pixX = round((-origX)/res);
-    pixY = depth/res + 3; %water surface in image frame
+    pixY = round(depth/res) + 8; %water surface in image frame, +8 is Kentucky windage right now
     pixZ = numPixZ - round(-origZ/res);    
     crossB = squeeze(squeeze(X(pixY,:,pixZ)));
     crossB = info.DoseGridScaling*double(crossB); %convert to dose in Gy
@@ -183,6 +204,8 @@ function calcCross = GetCalcCross(path, fname, origX, origY, origZ, res, plotOn,
     calcCross = [crossBIndep' crossB']; %return the calculated PDD data
 end
 
+%==============================================
+%==============================================
 function [regMeas regCalc sh] = RegisterPDDs(measPDD, calcPDD)
     regMeas = measPDD;
     regCalc = calcPDD;
@@ -191,8 +214,8 @@ function [regMeas regCalc sh] = RegisterPDDs(measPDD, calcPDD)
     measPDD(:,2) = measPDD(:,2)/max(measPDD(:,2));
     calcPDD(:,2) = calcPDD(:,2)/max(calcPDD(:,2));
     
-    %match up the resolution using cubic spline fit
-    calcPDDInt = spline(calcPDD(:,1), calcPDD(:,2), measPDD(:,1));
+    %match up the resolution by interpolation
+    calcPDDInt = interp1(calcPDD(:,1), calcPDD(:,2), measPDD(:,1),'cubic');
     
     %cross correlate
     [c,lags] = xcorr(measPDD(:,2), calcPDDInt, 200);
@@ -210,6 +233,8 @@ function [regMeas regCalc sh] = RegisterPDDs(measPDD, calcPDD)
     
 end
 
+%==============================================
+%==============================================
 function vOut = VerifyPDD(regMeas, regCalc)
     %Perform gamma evaluation
     
