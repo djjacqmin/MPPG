@@ -6,10 +6,10 @@ clear all;
 close all;
 
 %path and file name to spread sheet that describe each test
-meas_f_path = 'E:\\Google Drive\\Medical_Physics\\MPPG\\MPPG_BasicPhotonFields-2014-01-17\\';
-meas_f_file = '20131223_MPPG_Meas_Data.xlsx';
+[meas_f_file,meas_f_path,FilterIndex] = uigetfile('*.xlsx','Choose test summary spreadsheet');
 meas_f_full = [meas_f_path meas_f_file];
 [~,~,measTable] = xlsread(meas_f_full, 5); %5 indicates which page of the XL workbook the summary data is in
+cd(meas_f_path);
 
 mD = measTable(2:end,:); %remove header row
 [numTests numCols] = size(mD);
