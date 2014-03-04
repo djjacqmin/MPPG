@@ -8,7 +8,7 @@ close all;
 %path and file name to spread sheet that describe each test
 [meas_f_file,meas_f_path,FilterIndex] = uigetfile('*.xlsx','Choose test summary spreadsheet');
 meas_f_full = [meas_f_path meas_f_file];
-[~,~,measTable] = xlsread(meas_f_full, 5); %5 indicates which page of the XL workbook the summary data is in
+[~,~,measTable] = xlsread(meas_f_full, 1); %1 indicates which page of the XL workbook the summary data is in
 cd(meas_f_path);
 
 mD = measTable(2:end,:); %remove header row
@@ -33,9 +33,11 @@ cOrigXID = 12;  %Calculated dose grid origin offset (Lat)
 cOrigYID = 13;  %Calculated dose grid origin offset (Sup-Inf)
 cOrigZID = 14;  %Calculated dose grid origin offset (Axial)
 cOrigResID = 15;%Dose grid resolution
+xOffsetID = 16;%X offset (Lat, 0,0 is center of beam) in cm
+zOffsetID = 17;%Z offset (Sup-Inf, 0,0 is center of beam) in cm
 
 %Loop through all verification tests
-for v = 1:numTests
+for v = [2, 6]
     if strcmp('PDD',mD(v,3))
         %Run PDD verification
         measPDD = GetMeasPDD(mD{v,mPathID}, mD{v,mFnameID}, mD{v,mPageID},...
@@ -44,31 +46,33 @@ for v = 1:numTests
         
         calcPDD = GetCalcPDD(mD{v,cPathID}, mD{v,cFnameID}, mD{v,cOrigXID},...
             mD{v,cOrigYID}, mD{v,cOrigZID}, mD{v,cOrigResID}, plotOn, ...
-            mD{v,testID}, mD{v,enID}, mD{v,subTestID});
+            mD{v,testID}, mD{v,enID}, mD{v,subTestID}, mD{v,xOffsetID}, mD{v,zOffsetID});
         [regMeas regCalc sh] = RegisterPDDs(measPDD, calcPDD);
         %display how far we needed to shift to get best correlation, should be same for all beams?
         disp(['num pixels to shift: ' num2str(sh)]);
         
         %display PDDs
         figure;
-        plot(regMeas(:,1), regMeas(:,2)); hold all;
-        plot(regCalc(:,1), regCalc(:,2));
+        plot(regMeas(:,1), regMeas(:,2),'LineWidth',3); hold all;
+        plot(regCalc(:,1), regCalc(:,2),'--','LineWidth',3);
         ylim([0 1.25]);
         xlabel('Depth (cm)');
         ylabel('Normalized dose');
-        legend('Measured', 'Calculated');
-        title(['PDD ' num2str(mD{v,enID}) ' MV']);
+        
+        %title(['PDD ' num2str(mD{v,enID}) ' MV']);
+        
         
         %perform gamma evaluation
-        vOut = VerifyPDD(regMeas, regCalc);
+        vOut = VerifyPDD(regMeas, regCalc, plotOn);
         
         %display gamma
-        figure;
-        plot(regMeas(:,1),vOut);
-        ylim([0 1]);
-        xlabel('Depth (cm)');
-        ylabel('Gamma');
-        title(['PDD Gamma ' num2str(mD{v,enID}) ' MV']);
+        %figure;
+        plot(regMeas(:,1),vOut,'*-','LineWidth',3);
+        ylim([0 1.25]);
+        xlabel('Depth (cm)','FontSize',15);
+        ylabel('Gamma & Normalized Dose','FontSize',15);
+        %title(['PDD Gamma ' num2str(mD{v,enID}) ' MV']);
+        legend('Measured', 'Calculated', 'Gamma'); hold off;
         %WriteSummary(vOut);
     elseif strcmp('Cross',mD(v,3))
         %Run cross beam verification
@@ -84,24 +88,25 @@ for v = 1:numTests
         
         [regMeas regCalc sh] = RegisterPDDs(measCross, calcCross);
         figure;
-        plot(regMeas(:,1), regMeas(:,2)); hold all;
-        plot(regCalc(:,1), regCalc(:,2));
+        plot(regMeas(:,1), regMeas(:,2),'LineWidth',3); hold all;
+        plot(regCalc(:,1), regCalc(:,2),'--','LineWidth',3);
         ylim([0 1.25]);
         xlabel('Position (cm)');
-        ylabel('Normalized dose');
-        legend('Measured', 'Calculated');
-        title(['Cross ' num2str(mD{v,enID}) ' MV @ ' num2str(mD{v,depthID}) ' cm']);   
+        ylabel('Normalized dose','FontSize',15);
+        %legend('Measured', 'Calculated');
+        %title(['Cross ' num2str(mD{v,enID}) ' MV @ ' num2str(mD{v,depthID}) ' cm']);   
         
         %perform gamma evaluation
-        vOut = VerifyPDD(regMeas, regCalc);
+        vOut = VerifyPDD(regMeas, regCalc, plotOn);
         
         %display gamma
-        figure;
-        plot(regMeas(:,1),vOut);
-        ylim([0 2]);
-        xlabel('Position (cm)');
-        ylabel('Gamma');
-        title(['Cross Gamma ' num2str(mD{v,enID}) ' MV @ ' num2str(mD{v,depthID}) ' cm']);        
+        %figure;
+        plot(regMeas(:,1),vOut,'*-','LineWidth',3);
+        ylim([0 1.25]);
+        xlabel('Position (cm)','FontSize',15);
+        ylabel('Gamma & Normalized Dose','FontSize',15);
+        %title(['Cross Gamma ' num2str(mD{v,enID}) ' MV @ ' num2str(mD{v,depthID}) ' cm']); 
+        legend('Measured', 'Calculated', 'Gamma');
     end
         
 end
@@ -111,7 +116,7 @@ end
 function measPDD = GetMeasPDD(path, fname, page, depR, indepR, plotOn, test, en, sub)
     dep = xlsread([path fname], page, depR); %dependent var
     indep = xlsread([path fname], page, indepR);
-    measPDD = [indep dep];
+    measPDD = flipud([indep./10 dep]); %flip is for Wellhoffer, divide by 10 for cm
     
     if plotOn
         figure;
@@ -126,7 +131,7 @@ end
 function measCross = GetMeasCross(path, fname, page, depR, indepR, plotOn, test, en, sub, depth)
     dep = xlsread([path fname], page, depR); %dependent var
     indep = xlsread([path fname], page, indepR);
-    measCross = [indep dep];
+    measCross = [indep./10 dep];
     
     if plotOn
         figure;
@@ -138,7 +143,7 @@ end
 
 %==============================================
 %==============================================
-function calcPDD = GetCalcPDD(path, fname, origX, origY, origZ, res, plotOn, test, en, sub)
+function calcPDD = GetCalcPDD(path, fname, origX, origY, origZ, res, plotOn, test, en, sub, xOff, zOff)
     
     info = dicominfo([path fname]);    
     Y = dicomread(info);
@@ -149,9 +154,9 @@ function calcPDD = GetCalcPDD(path, fname, origX, origY, origZ, res, plotOn, tes
 
     %Get interogation point in image frame
     %The image frame has 0,0,0 at most right, post, sup
-    pixX = round((-origX)/res);
+    pixX = round((-origX+xOff)/res);
     pixSurY = 1; %water surface in image frame
-    pixZ = numPixZ - round(-origZ/res);    
+    pixZ = numPixZ - round((-origZ+zOff)/res);    
     OnAxPdd = squeeze(squeeze(X(pixSurY:end,pixX,pixZ)));
     OnAxPdd = info.DoseGridScaling*double(OnAxPdd); %convert to dose in Gy
     PddIndep = linspace(0,length(OnAxPdd)*res,length(OnAxPdd)); %in cm
@@ -186,7 +191,8 @@ function calcCross = GetCalcCross(path, fname, origX, origY, origZ, res, plotOn,
     pixX = round((-origX)/res);
     pixY = round(depth/res) + 8; %water surface in image frame, +8 is Kentucky windage right now
     pixZ = numPixZ - round(-origZ/res);    
-    crossB = squeeze(squeeze(X(pixY,:,pixZ)));
+    %crossB = squeeze(squeeze(X(pixY,:,pixZ)));
+    crossB = squeeze(squeeze(X(pixY,pixX,:)));
     crossB = info.DoseGridScaling*double(crossB); %convert to dose in Gy
     crossBIndep = linspace(-length(crossB)*res/2,length(crossB)*res/2,length(crossB)); %in cm
     %interpolate
@@ -201,7 +207,7 @@ function calcCross = GetCalcCross(path, fname, origX, origY, origZ, res, plotOn,
         ttl = ['Calculated ' test ' ' num2str(en) 'MV ' sub ' ' num2str(depth) ' cm depth'];
         title(ttl);        
     end    
-    calcCross = [crossBIndep' crossB']; %return the calculated PDD data
+    calcCross = [crossBIndep' crossB]; %return the calculated PDD data
 end
 
 %==============================================
@@ -235,24 +241,36 @@ end
 
 %==============================================
 %==============================================
-function vOut = VerifyPDD(regMeas, regCalc)
+function vOut = VerifyPDD(regMeas, regCalc, plotOn)
     %Perform gamma evaluation
+    
+    distThr = 4; %mm
+    doseThr = 0.04; %Should be Gray    
     
     %Compute distance error (in mm)
     len = length(regMeas(:,1));
-    rm = repmat(10*regMeas(:,1),1,len);
-    rc = repmat(10*regCalc(:,1)',len,1);
+    rm = repmat(10*regMeas(:,1),1,len); %convert to mm
+    rc = repmat(10*regCalc(:,1)',len,1); %convert to mm
     rE = (rm-rc).^2;
+    rEThr = rE./(distThr.^2);
+    if plotOn
+        figure;
+        imagesc(rEThr);
+        colorbar;
+    end
     
     %Compute dose error
     Drm = repmat(regMeas(:,2),1,len);
     Drc = repmat(regCalc(:,2)',len,1);
     dE = (Drm-Drc).^2;
+    dEThr = dE./(doseThr.^2);    
+    if plotOn
+        figure;
+        imagesc(dEThr);
+        colorbar;
+    end
     
-    distThr = 3; %mm
-    doseThr = 0.01; %Should be Gray
-    
-    gam2 = sqrt((rE./distThr.^2)+(dE./doseThr.^2));
+    gam2 = sqrt(rEThr + dEThr);
     %take min down columns to get gamma as a function of position
     gam = min(gam2);
         
