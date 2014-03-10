@@ -38,7 +38,7 @@ zOffsetID = 17;%Z offset (Sup-Inf, 0,0 is center of beam) in cm
 measUnitsID = 18;%Units on measurement independent variable (cm or mm)
 
 %Loop through all verification tests
-for v = [2, 6]
+for v = 4
 
     %Run verification
     measData = GetMeasData(mD{v,mPathID}, mD{v,mFnameID}, mD{v,mPageID},...
@@ -52,7 +52,7 @@ for v = [2, 6]
         mD{v,depthID}, mD{v,xOffsetID}, mD{v,zOffsetID});
     [regMeas regCalc sh] = RegisterData(measData, calcData);
     %display how far we needed to shift to get best correlation, should be same for all beams?
-    disp(['num pixels to shift: ' num2str(sh)]);
+    disp(['num pixels to shift ' mD{v,subTestID} ': ' num2str(sh)]);
 
     %perform gamma evaluation
     vOut = VerifyData(regMeas, regCalc, plotOn);
@@ -154,14 +154,9 @@ function calcData = GetCalcData(path, fname, origX, origY, origZ, res, plotOn, t
     end
     calcDep = info.DoseGridScaling*double(calcDep); %convert to dose in Gy
 
-    if plotOn
-        %test interpolation
-        interpFac = 10;
-        PddIndepInt = linspace(0,length(OnAxPdd)*res,length(OnAxPdd)*interpFac);
-        OnAxPddInt = spline(PddIndep, OnAxPdd, PddIndepInt);        
+    if plotOn     
         figure;
-        plot(PddIndep,OnAxPdd); hold all;
-        plot(PddIndepInt,OnAxPddInt);
+        plot(calcIndep,calcDep); hold all;
         ttl = ['Calculated ' test ' ' num2str(en) 'MV ' sub];
         title(ttl);        
     end
@@ -180,21 +175,33 @@ function [regMeas regCalc sh] = RegisterData(meas, calc)
     calc(:,2) = calc(:,2)/max(calc(:,2));
     
     %match up the resolution by interpolation
-    calcPDDInt = interp1(calc(:,1), calc(:,2), meas(:,1),'cubic');
+    calcInt = interp1(calc(:,1), calc(:,2), meas(:,1),'PCHIP');
+    
+    %ideal sample rate
+    sr = 1000; %1000 samples per cm
+    dist = meas(1,1) - meas(end,1); %total distance in cm
+    ns = sr*abs(dist); %number of samples
+    intIndep = linspace(meas(1,1),meas(end,1),ns)'; %interpolated independent var
+    
+    %interpolate measured data
+    measInt = interp1(meas(:,1), meas(:,2), intIndep, 'PCHIP');
+    
+    %interoplate calc data
+    calcInt = interp1(calc(:,1), calc(:,2), intIndep, 'PCHIP');
     
     %cross correlate
-    [c,lags] = xcorr(meas(:,2), calcPDDInt, 200);
+    [c,lags] = xcorr(measInt, calcInt, 200);
     
     %determine the peak correlation offset
     [~,i] = max(c);
     sh = lags(i); %number of pixels to shift (and direction)
     
     %shift one of the curves to match the other, *** this shouldn't be necessary
-    B = circshift(calcPDDInt,sh); %shift     
+    calcIntShft = circshift(calcInt,sh); %shift     
     
     %get rid of shifted pixels on end
-    regMeas = [meas(1:end-abs(sh),1) meas(1:end-abs(sh),2)];
-    regCalc = [meas(1:end-abs(sh),1) B(1:end-abs(sh))];
+    regMeas = [intIndep(1:end-abs(sh)) measInt(1:end-abs(sh))];
+    regCalc = [intIndep(1:end-abs(sh)) calcIntShft(1:end-abs(sh))];
     
 end
 
@@ -203,35 +210,95 @@ end
 function vOut = VerifyData(regMeas, regCalc, plotOn)
     %Perform gamma evaluation
     
-    distThr = 4; %mm
-    doseThr = 0.04; %Should be percent Gray    
+    distThr = 3; %mm
+    doseThr = 0.03; %Should be percent Gray    
     
     %Compute distance error (in mm)
     len = length(regMeas(:,1));
     rm = repmat(10*regMeas(:,1),1,len); %convert to mm
+    
+    figure;
+    imagesc(rm);
+    
     rc = repmat(10*regCalc(:,1)',len,1); %convert to mm
+    
+    figure;
+    imagesc(rc);
+    
     rE = (rm-rc).^2;
+    
+    figure;
+    imagesc(rE);
+    
     rEThr = rE./(distThr.^2);
     if plotOn
         figure;
         imagesc(rEThr);
         colorbar;
+
     end
     
     %Compute dose error
     Drm = repmat(regMeas(:,2),1,len);
+    
+    figure;
+    imagesc(Drm);
+    
     Drc = repmat(regCalc(:,2)',len,1);
+    
+    figure;
+    imagesc(Drc);
+    
     dE = (Drm-Drc).^2;
-    dEThr = dE./(doseThr.^2);    
+    
+    figure;
+    imagesc(dE);
+    
+    dEThr = dE./((doseThr).^2);    
     if plotOn
-        figure;
-        imagesc(dEThr);
-        colorbar;
+        %figure;
+        %imagesc(dEThr);
+        %colorbar;
+        
+
     end
     
     gam2 = sqrt(rEThr + dEThr);
+    
+    figure;
+    imagesc(gam2);
+    
     %take min down columns to get gamma as a function of position
-    gam = min(gam2);
+    [gam Ir] = min(gam2); %Ir is the row index where the min gamma was found
+    
+    
+    %%%%%Debug
+    figure;
+    plot(regMeas(:,1),regMeas(:,2)); hold all;
+    plot(regCalc(:,1),regCalc(:,2));
+    plot(regMeas(:,1),gam);
+    %get distance error at minimum gamma
+    Ic = 1:len; %make column index array
+    I = sub2ind(size(rm),Ir,Ic); %convert to linear indices
+    distMinGam = sqrt(rEThr(I)); %distance error at minimum gamma position
+    plot(regMeas(:,1),distMinGam);
+    
+    %get dose error at minimum gamma
+    doseMinGam = sqrt(dEThr(I)); %dose error at minimum gamma position
+    plot(regMeas(:,1),doseMinGam); hold off;
+    %get distance to minimum dose difference
+    [mDose IMDr] = min(dE);
+    legend('meas','calc','gam','distMinGam','doseMinGam');
+    
+    
+    %figure;
+    %plot(regMeas(:,1),regMeas(:,2)); hold all;
+    %plot(regCalc(:,1),regCalc(:,2));
+    %plot(regMeas(:,1),100*regMeas(:,2)-regCalc(:,2))./regMeas(:,2);
+    %plot(regMeas(:,1),gam);
+    %ylim([0 1.5]);
+    %legend('Meas','Calc','DTE','Dose Dif','Gamma');
+    %hold off;
         
     vOut = gam;
 end
