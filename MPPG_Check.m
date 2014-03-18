@@ -11,31 +11,32 @@ meas_f_full = [meas_f_path meas_f_file];
 [~,~,measTable] = xlsread(meas_f_full, 1); %1 indicates which page of the XL workbook the summary data is in
 cd(meas_f_path);
 
-mD = measTable(2:end,:); %remove header row
+mD = measTable(3:end,:); %remove header row
 [numTests numCols] = size(mD);
 
 %plot flag, tells subroutines to plot or not
 plotOn = 0;
 
 %Which columns hold what data in summary table
-testID = 1;     %name of the test (string)
-enID = 2;       %energy (integer)
-subTestID = 3;  %PDD or Cross beam (string)
-mPageID = 4;    %Measured data XL workbook page
-mDepRID = 5;    %Measured data dependent variable (nC)
-mIndepRID = 6;  %Measured data independent variable (position)
-depthID = 7;    %Depth (for cross beam measurements)
-cPathID = 8;    %Path to calculated dicom file (Pinnacle output)
-cFnameID = 9;   %Name of calculated dicom file (Pinnacle output)
-mPathID = 10;   %Path to measured data XL file
-mFnameID = 11;  %Name of measured data XL file
-cOrigXID = 12;  %Calculated dose grid origin offset (Lat)
-cOrigYID = 13;  %Calculated dose grid origin offset (Sup-Inf)
-cOrigZID = 14;  %Calculated dose grid origin offset (Axial)
-cOrigResID = 15;%Dose grid resolution
-xOffsetID = 16;%X offset (Lat, 0,0 is center of beam) in cm
-zOffsetID = 17;%Z offset (Sup-Inf, 0,0 is center of beam) in cm
-measUnitsID = 18;%Units on measurement independent variable (cm or mm)
+testIndex = 1;  %test number
+testID = 2;     %name of the test (string)
+enID = 3;       %energy and wedge ID (string)
+subTestID = 4;  %PDD or Cross beam (string)
+mPageID = 10;    %Measured data XL workbook page
+mDepRID = 11;    %Measured data dependent variable (nC)
+mIndepRID = 12;  %Measured data independent variable (position)
+depthID = 5;    %Depth (for cross beam measurements)
+cPathID = 14;    %Path to calculated dicom file (Pinnacle output)
+cFnameID = 15;   %Name of calculated dicom file (Pinnacle output)
+mPathID = 8;   %Path to measured data XL file
+mFnameID = 9;  %Name of measured data XL file
+cOrigXID = 16;  %Calculated dose grid origin offset (Lat)
+cOrigYID = 17;  %Calculated dose grid origin offset (Sup-Inf)
+cOrigZID = 18;  %Calculated dose grid origin offset (Axial)
+cOrigResID = 19;%Dose grid resolution
+xOffsetID = 6;%X offset (Lat, 0,0 is center of beam) in cm
+zOffsetID = 7;%Z offset (Sup-Inf, 0,0 is center of beam) in cm
+measUnitsID = 13;%Units on measurement independent variable (cm or mm)
 
 %Loop through all verification tests
 for v = 4
@@ -81,7 +82,7 @@ for v = 4
         figure;
         plot(regMeas(:,1), regMeas(:,2),'LineWidth',3); hold all;
         plot(regCalc(:,1), regCalc(:,2),'--','LineWidth',3);
-        ylim([0 1.25]);
+        ylim([0 1.5]);
         xlabel('Position (cm)');
         ylabel('Normalized dose','FontSize',15);
         %legend('Measured', 'Calculated');
@@ -90,12 +91,13 @@ for v = 4
         %display gamma
         %figure;
         plot(regMeas(:,1),vOut,'*-','LineWidth',3);
-        ylim([0 1.25]);
+        ylim([0 1.5]);
         xlabel('Position (cm)','FontSize',15);
         ylabel('Gamma & Normalized Dose','FontSize',15);
         %title(['Cross Gamma ' num2str(mD{v,enID}) ' MV @ ' num2str(mD{v,depthID}) ' cm']); 
         legend('Measured', 'Calculated', 'Gamma');
     end
+    xlim([-10 -7]);
         
 end
 
@@ -178,7 +180,7 @@ function [regMeas regCalc sh] = RegisterData(meas, calc)
     calcInt = interp1(calc(:,1), calc(:,2), meas(:,1),'PCHIP');
     
     %ideal sample rate
-    sr = 1000; %1000 samples per cm
+    sr = 200; %samples per cm
     dist = meas(1,1) - meas(end,1); %total distance in cm
     ns = sr*abs(dist); %number of samples
     intIndep = linspace(meas(1,1),meas(end,1),ns)'; %interpolated independent var
@@ -190,7 +192,7 @@ function [regMeas regCalc sh] = RegisterData(meas, calc)
     calcInt = interp1(calc(:,1), calc(:,2), intIndep, 'PCHIP');
     
     %cross correlate
-    [c,lags] = xcorr(measInt, calcInt, 200);
+    [c,lags] = xcorr(measInt, calcInt, 4*sr);
     
     %determine the peak correlation offset
     [~,i] = max(c);
@@ -217,18 +219,18 @@ function vOut = VerifyData(regMeas, regCalc, plotOn)
     len = length(regMeas(:,1));
     rm = repmat(10*regMeas(:,1),1,len); %convert to mm
     
-    figure;
-    imagesc(rm);
+    %figure;
+    %imagesc(rm);
     
     rc = repmat(10*regCalc(:,1)',len,1); %convert to mm
     
-    figure;
-    imagesc(rc);
+    %figure;
+    %imagesc(rc);
     
     rE = (rm-rc).^2;
     
-    figure;
-    imagesc(rE);
+    %figure;
+    %imagesc(rE);
     
     rEThr = rE./(distThr.^2);
     if plotOn
@@ -241,36 +243,34 @@ function vOut = VerifyData(regMeas, regCalc, plotOn)
     %Compute dose error
     Drm = repmat(regMeas(:,2),1,len);
     
-    figure;
-    imagesc(Drm);
+    %figure;
+    %imagesc(Drm);
     
     Drc = repmat(regCalc(:,2)',len,1);
     
-    figure;
-    imagesc(Drc);
+    %figure;
+    %imagesc(Drc);
     
     dE = (Drm-Drc).^2;
     
-    figure;
-    imagesc(dE);
+    %figure;
+    %imagesc(dE);
     
     dEThr = dE./((doseThr).^2);    
     if plotOn
         %figure;
         %imagesc(dEThr);
-        %colorbar;
-        
-
+        %colorbar;        
     end
     
-    gam2 = sqrt(rEThr + dEThr);
+    gam2 = rEThr + dEThr;
     
-    figure;
-    imagesc(gam2);
+    %figure;
+    %imagesc(gam2);
     
     %take min down columns to get gamma as a function of position
     [gam Ir] = min(gam2); %Ir is the row index where the min gamma was found
-    
+    gam = sqrt(gam);
     
     %%%%%Debug
     figure;
