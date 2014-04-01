@@ -12,8 +12,8 @@ deps = double(info.NumberOfFrames);
 % Rows Appear to be coronal
 % Columns Appear to be Sagittal
 
-x = info.PixelSpacing(1)*(((1:rows) - rows/2) - 0.5) ;
-y = info.PixelSpacing(2)*(((1:cols) - cols/2) - 0.5) ;
+x = info.PixelSpacing(2)*(((1:cols) - cols/2) - 0.5) ;
+y = info.PixelSpacing(1)*(((1:rows) - rows/2) - 0.5) ;
 z = info.PixelSpacing(2)*(((1:deps) - deps/2) - 0.5) ;
 
 J = reshape(I(:,:,1,:),[rows cols deps]);
@@ -22,7 +22,7 @@ DOSE = double(J)*info.DoseGridScaling;
 
 % I want a plane at: x = 0, y = 0 and z = 0
 xloc = 0;
-yloc = 40;
+yloc = 0;
 zloc = 0;
 
 figure(1)
