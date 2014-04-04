@@ -1,45 +1,30 @@
+clear all;
+close all;
+
 % Test out the reading and processesing of a Dicom File
 
-filename = '6x_10x10_100SSD_Dose_PLAN.dcm';
+filename = '15x15_UO_000_ISO_000.dcm';
 
-info = dicominfo(filename);
-I = dicomread(filename);
-
-rows = double(info.Rows);
-cols = double(info.Columns);
-deps = double(info.NumberOfFrames);
-
-% Rows Appear to be coronal
-% Columns Appear to be Sagittal
-
-x = info.PixelSpacing(2)*(((1:cols) - cols/2) - 0.5) ;
-y = info.PixelSpacing(1)*(((1:rows) - rows/2) - 0.5) ;
-z = info.PixelSpacing(2)*(((1:deps) - deps/2) - 0.5) ;
-
-J = reshape(I(:,:,1,:),[rows cols deps]);
-
-DOSE = double(J)*info.DoseGridScaling;
+[ dcm_x, dcm_y, dcm_z, dcm_dose ] = dicomDoseTOmat(filename, [ 0 -30.09 0 ]);
 
 % I want a plane at: x = 0, y = 0 and z = 0
 xloc = 0;
-yloc = 0;
+yloc = 5;
 zloc = 0;
 
 figure(1)
 
-
 subplot(1,3,1);
-DOSE2D = getPlaneAt(x,y,z,DOSE,xloc,'x');
-axis('square')
-imagesc(y,z,DOSE2D)
+DOSE2D = getPlaneAt(dcm_x,dcm_y,dcm_z,dcm_dose,xloc,'x');
+imagesc(dcm_z,dcm_y,DOSE2D)
 
 subplot(1,3,2);
-DOSE2D = getPlaneAt(x,y,z,DOSE,yloc,'y');
-imagesc(x,z,DOSE2D)
+DOSE2D = getPlaneAt(dcm_x,dcm_y,dcm_z,dcm_dose,yloc,'y');
+imagesc(dcm_z,dcm_x,DOSE2D)
 
 subplot(1,3,3);
-DOSE2D = getPlaneAt(x,y,z,DOSE,zloc,'z');
-imagesc(z,y,DOSE2D)
+DOSE2D = getPlaneAt(dcm_x,dcm_y,dcm_z,dcm_dose,zloc,'z');
+imagesc(dcm_z,dcm_y,DOSE2D)
 
 %% Test out the reading and processing of Acsii files from OmniPro
 
@@ -51,17 +36,7 @@ omniproStruct = omniproAccessTOmat(filename);
 filename = 'P06_Open_OPP.ASC';
 omniproStruct = omniproAccessTOmat(filename,omniproStruct);
 
-figure(2)
-hold on;
-% Get OPD (Open field PDD) for 15x15 field (150 mm by 150 mm)
-[ x, y, z, d ] = getOmniproAccessData(omniproStruct,'OPD', [150 150]);
-plot(z,d)
-% Get OPP (Open field profile) crossline (X) profile for 15x15 field (150
-% mm by 150 mm) at a depth of 5 cm (50 mm)
-[ x, y, z, d ] = getOmniproAccessData(omniproStruct,'OPP', [150 150],50,'X');
-plot(x,d)
-
-
+figure(2);
 % Read Jeni's file from OmniPro and Create Structure
 filename = 'P06OPN_WISC.ASC';
 omniproStruct2 = omniproAccessTOmat(filename);
@@ -70,3 +45,49 @@ omniproStruct2 = omniproAccessTOmat(filename);
 [ x, y, z, d ] = getOmniproAccessData(omniproStruct2,'OPD', [100 100]);
 plot(z,d,'r')
 hold off;
+
+%% Let's try to compare some measured profiles and some Eclipse data
+
+% I want a plane at: x = 0, y = 0 and z = 0
+xloc = 0; % cm
+yloc = 20; % cm
+zloc = 0; % cm
+
+figure(3)
+
+% Starting with X, let's do a crossline profile 
+subplot(1,3,1);
+
+% Get Eclipse Profile
+DOSE1D = getProfileAt(dcm_x,dcm_y,dcm_z,dcm_dose,yloc,zloc,'x');
+DOSE1D = convertTOrelative(dcm_x,DOSE1D,0);
+
+% Get Omnipro Data
+[ x, y, z, d ] = getOmniproAccessData(omniproStruct,'OPP', [150 150],10*yloc,'X');
+
+plot(dcm_x,DOSE1D,'k',x/10,d,':b')
+
+% Next is Y, Let's do the PDD
+subplot(1,3,2);
+
+% Get Eclipse Profile
+DOSE1D = getProfileAt(dcm_x,dcm_y,dcm_z,dcm_dose,xloc,zloc,'y');
+DOSE1D = convertTOrelative(dcm_y,DOSE1D,'max');
+
+% Get Omnipro Data
+[ x, y, z, d ] = getOmniproAccessData(omniproStruct,'OPD', [150 150]);
+
+plot(dcm_y,DOSE1D,'k',z/10,d,':b')
+
+% Finally Z, let's get the inline profile
+
+subplot(1,3,3);
+
+% Get Eclipse Profile
+DOSE1D = getProfileAt(dcm_x,dcm_y,dcm_z,dcm_dose,xloc,yloc,'z');
+DOSE1D = convertTOrelative(dcm_z,DOSE1D,0);
+
+% Get Omnipro Data
+[ x, y, z, d ] = getOmniproAccessData(omniproStruct,'OPP', [150 150],50,'Y');
+
+plot(dcm_z,DOSE1D,'k',y/10,d,':b')
